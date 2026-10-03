@@ -101,6 +101,47 @@ namespace SakusDev.MAScaleAdjusterMetricSystem.Tests
         }
 
         [Test]
+        public void MagnitudeSolver_ReachesTargetWithRotatedNonUniformTransform()
+        {
+            var l2w = Matrix4x4.TRS(
+                new Vector3(0.4f, -1.2f, 2.3f),
+                Quaternion.Euler(31f, -22f, 47f),
+                new Vector3(1.7f, 0.55f, 2.2f));
+
+            var childLocal = new Vector3(0.32f, 0.41f, -0.18f);
+            var oldScale = new Vector3(1.15f, 0.82f, 1.27f);
+            var x0 = MetricScaleMath.ScaleThreshold;
+
+            Vector3 Predict(float x)
+            {
+                var nextScale = oldScale;
+                nextScale.x = x;
+                var nextLocal = MetricScaleMath.TransformChildPosition(
+                    childLocal,
+                    l2w,
+                    oldScale,
+                    nextScale);
+                return l2w.MultiplyPoint(nextLocal) - l2w.MultiplyPoint(Vector3.zero);
+            }
+
+            var desiredScale = 1.63f;
+            var target = Predict(desiredScale).magnitude;
+            var origin = Predict(x0);
+            var direction = Predict(x0 + 1f) - origin;
+
+            var solved = MetricScaleMath.SolveMagnitudeAlongLinearPath(
+                origin,
+                direction,
+                target,
+                x0,
+                oldScale.x,
+                x0);
+
+            Assert.That(float.IsNaN(solved), Is.False);
+            Assert.That(Predict(solved).magnitude, Is.EqualTo(target).Within(1e-5f));
+        }
+
+        [Test]
         public void ProjectionSolver_ChoosesNearestValidRoot()
         {
             var solved = MetricScaleMath.SolveAbsoluteProjectionAlongLinearPath(
