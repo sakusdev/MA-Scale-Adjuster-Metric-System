@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Validate package.json
         shell: python
         run: |
@@ -18,6 +19,7 @@ jobs:
           assert p["name"] == "dev.sakus.ma-scale-adjuster-metric-system"
           assert p["unity"] == "2022.3"
           assert "nadena.dev.modular-avatar" in p["vpmDependencies"]
+
       - name: Validate required files
         shell: python
         run: |
@@ -30,3 +32,50 @@ jobs:
           ]
           missing = [x for x in required if not Path(x).is_file()]
           assert not missing, f"Missing: {missing}"
+
+      - name: Parse all C# files with Roslyn
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          cd "$tmp"
+          dotnet new console --framework net8.0 --force >/dev/null
+          dotnet add package Microsoft.CodeAnalysis.CSharp --version 4.11.0 >/dev/null
+          cat > Program.cs <<'CS'
+          using Microsoft.CodeAnalysis;
+          using Microsoft.CodeAnalysis.CSharp;
+
+          if (args.Length != 1)
+          {
+              Console.Error.WriteLine("Expected repository root.");
+              return 2;
+          }
+
+          var root = Path.GetFullPath(args[0]);
+          var failed = false;
+
+          foreach (var file in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+                       .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}.git{Path.DirectorySeparatorChar}")))
+          {
+              var text = File.ReadAllText(file);
+              var tree = CSharpSyntaxTree.ParseText(
+                  text,
+                  new CSharpParseOptions(LanguageVersion.CSharp9),
+                  path: file);
+
+              var errors = tree.GetDiagnostics()
+                  .Where(d => d.Severity == DiagnosticSeverity.Error)
+                  .ToArray();
+
+              foreach (var error in errors)
+              {
+                  Console.Error.WriteLine(error);
+                  failed = true;
+              }
+          }
+
+          if (failed) return 1;
+          Console.WriteLine("Roslyn syntax check passed.");
+          return 0;
+          CS
+          dotnet run -- "$GITHUB_WORKSPACE"
