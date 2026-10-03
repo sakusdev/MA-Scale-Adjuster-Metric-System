@@ -372,9 +372,11 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
                 return false;
             }
 
-            if (_adjuster == null || !_adjuster.transform.IsChildOf(_groundCompensation))
+            if (_adjuster == null
+                || (_adjuster.transform != _groundCompensation
+                    && !_adjuster.transform.IsChildOf(_groundCompensation)))
             {
-                reason = "The compensation transform must be an ancestor of the adjusted bone.";
+                reason = "The compensation transform must be the adjusted bone itself or one of its ancestors.";
                 return false;
             }
 
