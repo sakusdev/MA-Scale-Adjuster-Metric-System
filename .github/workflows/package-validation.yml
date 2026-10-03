@@ -1,0 +1,32 @@
+name: Package validation
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  package-structure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate package.json
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          p = json.loads(Path("package.json").read_text())
+          assert p["name"] == "dev.sakus.ma-scale-adjuster-metric-system"
+          assert p["unity"] == "2022.3"
+          assert "nadena.dev.modular-avatar" in p["vpmDependencies"]
+      - name: Validate required files
+        shell: python
+        run: |
+          from pathlib import Path
+          required = [
+              "Editor/MAScaleAdjusterMetricWindow.cs",
+              "Editor/dev.sakus.ma-scale-adjuster-metric-system.editor.asmdef",
+              "README.md",
+              "LICENSE",
+          ]
+          missing = [x for x in required if not Path(x).is_file()]
+          assert not missing, f"Missing: {missing}"
