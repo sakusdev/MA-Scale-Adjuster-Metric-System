@@ -1,0 +1,23 @@
+{
+  "name": "dev.sakus.ma-scale-adjuster-metric-system.editor.tests",
+  "rootNamespace": "SakusDev.MAScaleAdjusterMetricSystem.Tests",
+  "references": [
+    "dev.sakus.ma-scale-adjuster-metric-system.editor"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

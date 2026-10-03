@@ -1,0 +1,123 @@
+name: Package validation
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: package-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-structure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate package and asmdef JSON
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          package = json.loads(Path("package.json").read_text())
+          assert package["name"] == "dev.sakus.ma-scale-adjuster-metric-system"
+          assert package["unity"] == "2022.3"
+          ma_range = package["vpmDependencies"]["nadena.dev.modular-avatar"]
+          assert ma_range == ">=1.18.0 <2.0.0-a"
+
+          for path in Path(".").rglob("*.asmdef"):
+              json.loads(path.read_text())
+
+      - name: Validate required package files
+        shell: python
+        run: |
+          from pathlib import Path
+
+          required = [
+              "Editor/MAScaleAdjusterMetricWindow.cs",
+              "Editor/MetricScaleMath.cs",
+              "Editor/AssemblyInfo.cs",
+              "Editor/dev.sakus.ma-scale-adjuster-metric-system.editor.asmdef",
+              "Tests/Editor/MetricMathTests.cs",
+              "Tests/Editor/dev.sakus.ma-scale-adjuster-metric-system.editor.tests.asmdef",
+              "README.md",
+              "LICENSE",
+              "Third Party Notices.md",
+          ]
+          missing = [x for x in required if not Path(x).is_file()]
+          assert not missing, f"Missing: {missing}"
+
+      - name: Validate Unity meta files
+        shell: python
+        run: |
+          import re
+          from pathlib import Path
+
+          tracked = [
+              Path("Editor"),
+              Path("Editor/MAScaleAdjusterMetricWindow.cs"),
+              Path("Editor/MetricScaleMath.cs"),
+              Path("Editor/AssemblyInfo.cs"),
+              Path("Editor/dev.sakus.ma-scale-adjuster-metric-system.editor.asmdef"),
+              Path("Tests"),
+              Path("Tests/Editor"),
+              Path("Tests/Editor/MetricMathTests.cs"),
+              Path("Tests/Editor/dev.sakus.ma-scale-adjuster-metric-system.editor.tests.asmdef"),
+          ]
+
+          guids = {}
+          for asset in tracked:
+              meta = Path(str(asset) + ".meta")
+              assert meta.is_file(), f"Missing meta file for {asset}"
+              text = meta.read_text()
+              match = re.search(r"^guid:\s*([0-9a-f]{32})$", text, re.MULTILINE)
+              assert match, f"Invalid or missing GUID in {meta}"
+              guid = match.group(1)
+              assert guid not in guids, f"Duplicate GUID {guid}: {meta} and {guids[guid]}"
+              guids[guid] = meta
+
+      - name: Parse all C# files with Roslyn
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          cd "$tmp"
+          dotnet new console --framework net8.0 --force >/dev/null
+          dotnet add package Microsoft.CodeAnalysis.CSharp --version 4.11.0 >/dev/null
+          cat > Program.cs <<'CS'
+          using Microsoft.CodeAnalysis;
+          using Microsoft.CodeAnalysis.CSharp;
+
+          if (args.Length != 1)
+          {
+              Console.Error.WriteLine("Expected repository root.");
+              return 2;
+          }
+
+          var root = Path.GetFullPath(args[0]);
+          var failed = false;
+
+          foreach (var file in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+                       .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}.git{Path.DirectorySeparatorChar}")))
+          {
+              var source = File.ReadAllText(file);
+              var tree = CSharpSyntaxTree.ParseText(
+                  source,
+                  new CSharpParseOptions(LanguageVersion.CSharp9),
+                  path: file);
+
+              foreach (var error in tree.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error))
+              {
+                  Console.Error.WriteLine(error);
+                  failed = true;
+              }
+          }
+
+          if (failed) return 1;
+          Console.WriteLine("Roslyn syntax check passed.");
+          return 0;
+          CS
+          dotnet run -- "$GITHUB_WORKSPACE"
