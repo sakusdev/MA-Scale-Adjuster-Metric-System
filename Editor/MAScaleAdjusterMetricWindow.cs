@@ -214,6 +214,16 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
                 EditorGUILayout.HelpBox(
                     "Child transforms will be repositioned with the same coordinate conversion used by Modular Avatar's Scale Adjuster tool. All direct children are adjusted, not only the measurement endpoint.",
                     MessageType.None);
+
+                var scale = _adjuster.Scale;
+                if (scale.x < MetricScaleMath.ScaleThreshold
+                    || scale.y < MetricScaleMath.ScaleThreshold
+                    || scale.z < MetricScaleMath.ScaleThreshold)
+                {
+                    EditorGUILayout.HelpBox(
+                        "One or more MA Scale components are zero, negative, or extremely small. Modular Avatar clamps the effective value while adjusting child positions, so changing the metric length can produce a discontinuity. An unchanged target is kept as a true no-op.",
+                        MessageType.Warning);
+                }
             }
             else
             {
@@ -289,6 +299,12 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
 
         private float CalculateRequiredAxisScale(float target)
         {
+            // A no-op metric edit should remain a true no-op, including when the
+            // current MA Scale uses zero or a negative value that MA's child-position
+            // conversion would otherwise clamp internally.
+            if (Mathf.Approximately(target, GetCurrentLengthMetres()))
+                return GetAxis(_adjuster.Scale, _axis);
+
             return _adjustChildPositions
                 ? CalculateScaleWithChildAdjustment(target)
                 : CalculateScaleWithoutChildAdjustment(target);
