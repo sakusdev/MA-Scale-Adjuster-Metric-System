@@ -28,7 +28,7 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
         {
             var window = GetWindow<MAScaleAdjusterMetricWindow>();
             window.titleContent = new GUIContent("MA Metric");
-            window.minSize = new Vector2(400, 390);
+            window.minSize = new Vector2(420, 500);
             window.TryUseSelection();
             window.Show();
         }
@@ -336,6 +336,9 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
                     _groundReferenceA = _groundReferenceB;
                     _groundReferenceB = null;
                 }
+
+                if (_groundReferenceA == null && _groundReferenceB == null)
+                    _groundReferenceA = _child;
             }
             else
             {
