@@ -8,8 +8,6 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
 {
     public sealed class MAScaleAdjusterMetricWindow : EditorWindow
     {
-        private const float ScaleThreshold = 1f / (1 << 14);
-
         private enum BoneAxis { X, Y, Z }
         private enum MeasurementMode { FullLength, AxisProjected }
 
@@ -179,13 +177,13 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
             EditorGUILayout.Space(4);
             _targetMetres = EditorGUILayout.FloatField("Target length (m)", _targetMetres);
 
-            if (!IsFinite(currentLength))
+            if (!MetricScaleMath.IsFinite(currentLength))
             {
                 EditorGUILayout.HelpBox("The current bone length is not finite.", MessageType.Error);
                 return;
             }
 
-            if (!IsFinite(_targetMetres) || _targetMetres < 0f)
+            if (!MetricScaleMath.IsFinite(_targetMetres) || _targetMetres < 0f)
             {
                 EditorGUILayout.HelpBox(
                     "Target length must be a finite value of zero or greater.",
@@ -197,7 +195,7 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
             using (new EditorGUI.DisabledScope(true))
                 EditorGUILayout.FloatField("Resulting axis scale", resultingScale);
 
-            if (!IsFinite(resultingScale))
+            if (!MetricScaleMath.IsFinite(resultingScale))
             {
                 EditorGUILayout.HelpBox(
                     "The requested length cannot be reached by changing only the selected MA Scale axis.",
@@ -226,7 +224,7 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
 
             EditorGUILayout.Space(8);
             using (new EditorGUI.DisabledScope(
-                       !IsFinite(resultingScale) || Mathf.Approximately(currentAxisScale, resultingScale)))
+                       !MetricScaleMath.IsFinite(resultingScale) || Mathf.Approximately(currentAxisScale, resultingScale)))
             {
                 if (GUILayout.Button("Apply to MA Scale Adjuster", GUILayout.Height(30)))
                     Apply(resultingScale);
@@ -301,16 +299,11 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
             if (_adjuster == null || _child == null) return float.NaN;
 
             var currentScale = GetAxis(_adjuster.Scale, _axis);
-
-            // MA's own child-adjustment logic clamps effective scale components to a
-            // small positive value before converting child coordinates. We solve in
-            // the same positive domain so applying the result is deterministic.
-            var x0 = ScaleThreshold;
-            var x1 = ScaleThreshold + 1f;
+            var x0 = MetricScaleMath.ScaleThreshold;
+            var x1 = x0 + 1f;
 
             var v0 = PredictAdjustedChildWorldVector(x0);
-            var v1 = PredictAdjustedChildWorldVector(x1);
-            var direction = v1 - v0;
+            var direction = PredictAdjustedChildWorldVector(x1) - v0;
 
             if (_measurementMode == MeasurementMode.AxisProjected)
             {
@@ -318,32 +311,22 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
                 if (axisWorld.sqrMagnitude <= 1e-14f) return float.NaN;
                 axisWorld.Normalize();
 
-                var a0 = Vector3.Dot(v0, axisWorld);
-                var ad = Vector3.Dot(direction, axisWorld);
-                if (Mathf.Abs(ad) <= 1e-7f) return float.NaN;
-
-                var candidateA = x0 + (target - a0) / ad;
-                var candidateB = x0 + (-target - a0) / ad;
-                return PickValidNearest(candidateA, candidateB, currentScale);
+                return MetricScaleMath.SolveAbsoluteProjectionAlongLinearPath(
+                    Vector3.Dot(v0, axisWorld),
+                    Vector3.Dot(direction, axisWorld),
+                    target,
+                    x0,
+                    currentScale,
+                    MetricScaleMath.ScaleThreshold);
             }
 
-            // v(x) = v0 + direction * (x - x0)
-            // Solve |v(x)|^2 = target^2 exactly.
-            var a = Vector3.Dot(direction, direction);
-            if (a <= 1e-14f) return float.NaN;
-
-            var b = 2f * Vector3.Dot(v0, direction);
-            var c = Vector3.Dot(v0, v0) - Square(target);
-            var discriminant = b * b - 4f * a * c;
-
-            var tolerance = 1e-6f * Mathf.Max(1f, b * b + Mathf.Abs(4f * a * c));
-            if (discriminant < -tolerance) return float.NaN;
-            discriminant = Mathf.Max(0f, discriminant);
-
-            var sqrt = Mathf.Sqrt(discriminant);
-            var yA = (-b + sqrt) / (2f * a);
-            var yB = (-b - sqrt) / (2f * a);
-            return PickValidNearest(x0 + yA, x0 + yB, currentScale);
+            return MetricScaleMath.SolveMagnitudeAlongLinearPath(
+                v0,
+                direction,
+                target,
+                x0,
+                currentScale,
+                MetricScaleMath.ScaleThreshold);
         }
 
         private float CalculateScaleWithoutChildAdjustment(float target)
@@ -365,30 +348,22 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
                 if (axisWorld.sqrMagnitude <= 1e-14f) return float.NaN;
                 axisWorld.Normalize();
 
-                var a0 = Vector3.Dot(v0, axisWorld);
-                var ad = Vector3.Dot(direction, axisWorld);
-                if (Mathf.Abs(ad) <= 1e-7f) return float.NaN;
-
-                var candidateA = (target - a0) / ad;
-                var candidateB = (-target - a0) / ad;
-                return PickNearest(candidateA, candidateB, currentScale);
+                return MetricScaleMath.SolveAbsoluteProjectionAlongLinearPath(
+                    Vector3.Dot(v0, axisWorld),
+                    Vector3.Dot(direction, axisWorld),
+                    target,
+                    0f,
+                    currentScale,
+                    float.NegativeInfinity);
             }
 
-            var a = Vector3.Dot(direction, direction);
-            if (a <= 1e-14f) return float.NaN;
-
-            var b = 2f * Vector3.Dot(v0, direction);
-            var c = Vector3.Dot(v0, v0) - Square(target);
-            var discriminant = b * b - 4f * a * c;
-
-            var tolerance = 1e-6f * Mathf.Max(1f, b * b + Mathf.Abs(4f * a * c));
-            if (discriminant < -tolerance) return float.NaN;
-            discriminant = Mathf.Max(0f, discriminant);
-
-            var sqrt = Mathf.Sqrt(discriminant);
-            var rootA = (-b + sqrt) / (2f * a);
-            var rootB = (-b - sqrt) / (2f * a);
-            return PickNearest(rootA, rootB, currentScale);
+            return MetricScaleMath.SolveMagnitudeAlongLinearPath(
+                v0,
+                direction,
+                target,
+                0f,
+                currentScale,
+                float.NegativeInfinity);
         }
 
         private Vector3 PredictAdjustedChildWorldVector(float selectedAxisScale)
@@ -396,7 +371,7 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
             var nextScale = _adjuster.Scale;
             SetAxis(ref nextScale, _axis, selectedAxisScale);
 
-            var nextLocalPosition = TransformChildPosition(
+            var nextLocalPosition = MetricScaleMath.TransformChildPosition(
                 _child.localPosition,
                 _adjuster.transform.localToWorldMatrix,
                 _adjuster.Scale,
@@ -421,14 +396,14 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
 
         private void Apply(float selectedAxisScale)
         {
-            if (!IsFinite(selectedAxisScale) || _adjuster == null) return;
+            if (!MetricScaleMath.IsFinite(selectedAxisScale) || _adjuster == null) return;
 
             var oldScale = _adjuster.Scale;
             var newScale = oldScale;
             SetAxis(ref newScale, _axis, selectedAxisScale);
 
-            Undo.SetCurrentGroupName("Set MA Scale Adjuster metric length");
             var undoGroup = Undo.GetCurrentGroup();
+            Undo.SetCurrentGroupName("Set MA Scale Adjuster metric length");
 
             if (_adjustChildPositions)
             {
@@ -436,7 +411,7 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
                 foreach (Transform child in _adjuster.transform)
                 {
                     Undo.RecordObject(child, "Set MA Scale Adjuster metric length");
-                    child.localPosition = TransformChildPosition(
+                    child.localPosition = MetricScaleMath.TransformChildPosition(
                         child.localPosition,
                         targetL2W,
                         oldScale,
@@ -455,49 +430,6 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
             Repaint();
         }
 
-        private static Vector3 TransformChildPosition(
-            Vector3 childLocalPosition,
-            Matrix4x4 targetLocalToWorld,
-            Vector3 oldScale,
-            Vector3 newScale)
-        {
-            var clampedOld = ClampScale(oldScale);
-            var clampedNew = ClampScale(newScale);
-
-            var baseToScaleCoord =
-                (targetLocalToWorld * Matrix4x4.Scale(clampedOld)).inverse
-                * targetLocalToWorld;
-            var updateTransform = Matrix4x4.Scale(clampedNew) * baseToScaleCoord;
-
-            return updateTransform.MultiplyPoint(childLocalPosition);
-        }
-
-        private static Vector3 ClampScale(Vector3 scale)
-        {
-            return new Vector3(
-                Mathf.Max(ScaleThreshold, scale.x),
-                Mathf.Max(ScaleThreshold, scale.y),
-                Mathf.Max(ScaleThreshold, scale.z));
-        }
-
-        private static float PickValidNearest(float a, float b, float current)
-        {
-            var aValid = IsFinite(a) && a >= ScaleThreshold;
-            var bValid = IsFinite(b) && b >= ScaleThreshold;
-
-            if (!aValid && !bValid) return float.NaN;
-            if (!aValid) return b;
-            if (!bValid) return a;
-            return PickNearest(a, b, current);
-        }
-
-        private static float PickNearest(float a, float b, float current)
-        {
-            if (!IsFinite(a)) return b;
-            if (!IsFinite(b)) return a;
-            return Mathf.Abs(a - current) <= Mathf.Abs(b - current) ? a : b;
-        }
-
         private bool IsNearlyAxisAligned()
         {
             if (_child == null) return true;
@@ -505,13 +437,6 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
             var d = _child.localPosition;
             var selected = Mathf.Abs(GetAxis(d, _axis));
             return d.magnitude <= 1e-7f || selected / d.magnitude >= 0.995f;
-        }
-
-        private static float Square(float value) => value * value;
-
-        private static bool IsFinite(float value)
-        {
-            return !float.IsNaN(value) && !float.IsInfinity(value);
         }
 
         private static float GetAxis(Vector3 value, BoneAxis axis)
