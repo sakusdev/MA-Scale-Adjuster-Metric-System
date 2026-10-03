@@ -17,6 +17,6 @@
     "metric"
   ],
   "vpmDependencies": {
-    "nadena.dev.modular-avatar": ">=1.18.0"
+    "nadena.dev.modular-avatar": ">=1.18.0 <2.0.0-a"
   }
 }
