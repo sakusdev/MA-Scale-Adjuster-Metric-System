@@ -204,60 +204,93 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
                 MessageType.None);
         }
 
-        private Vector3 GetUnscaledWorldComponents()
+        private Vector3 GetWorldVectorForScale(Vector3 maScale)
         {
             if (_adjuster == null || _child == null) return Vector3.zero;
 
-            var bone = _adjuster.transform;
-            var delta = _child.localPosition;
-            var parentMatrix = bone.parent != null ? bone.parent.localToWorldMatrix : Matrix4x4.identity;
-            var rotation = Matrix4x4.Rotate(bone.localRotation);
+            // MA inserts a scale proxy directly under the adjusted bone. Conceptually,
+            // the endpoint vector is therefore scaled in the bone's local coordinate
+            // system first, then transformed by the bone's complete local-to-world
+            // linear transform. Using localToWorldMatrix here is important: it retains
+            // the bone's own scale and all rotated/non-uniform parent scales.
+            var scaledLocalEndpoint = Vector3.Scale(_child.localPosition, maScale);
+            return _adjuster.transform.localToWorldMatrix.MultiplyVector(scaledLocalEndpoint);
+        }
 
-            var x = parentMatrix.MultiplyVector(rotation.MultiplyVector(Vector3.right * delta.x)).magnitude;
-            var y = parentMatrix.MultiplyVector(rotation.MultiplyVector(Vector3.up * delta.y)).magnitude;
-            var z = parentMatrix.MultiplyVector(rotation.MultiplyVector(Vector3.forward * delta.z)).magnitude;
-            return new Vector3(x, y, z);
+        private Vector3 GetSelectedAxisWorldVectorPerUnitScale()
+        {
+            if (_adjuster == null || _child == null) return Vector3.zero;
+
+            var local = Vector3.zero;
+            SetAxis(ref local, _axis, GetAxis(_child.localPosition, _axis));
+            return _adjuster.transform.localToWorldMatrix.MultiplyVector(local);
         }
 
         private float GetBaseLengthMetres()
         {
-            var c = GetUnscaledWorldComponents();
-            return _measurementMode == MeasurementMode.FullLength ? c.magnitude : Mathf.Abs(GetAxis(c, _axis));
+            if (_measurementMode == MeasurementMode.FullLength)
+                return GetWorldVectorForScale(Vector3.one).magnitude;
+
+            return GetSelectedAxisWorldVectorPerUnitScale().magnitude;
         }
 
         private float GetCurrentLengthMetres()
         {
-            var c = GetUnscaledWorldComponents();
-            var s = _adjuster.Scale;
-            if (_measurementMode == MeasurementMode.AxisProjected)
-                return Mathf.Abs(GetAxis(c, _axis) * GetAxis(s, _axis));
+            if (_measurementMode == MeasurementMode.FullLength)
+                return GetWorldVectorForScale(_adjuster.Scale).magnitude;
 
-            var scaled = Vector3.Scale(c, new Vector3(Mathf.Abs(s.x), Mathf.Abs(s.y), Mathf.Abs(s.z)));
-            return scaled.magnitude;
+            return GetSelectedAxisWorldVectorPerUnitScale().magnitude
+                   * Mathf.Abs(GetAxis(_adjuster.Scale, _axis));
         }
 
         private float CalculateRequiredAxisScale(float target)
         {
-            var c = GetUnscaledWorldComponents();
+            var axisVector = GetSelectedAxisWorldVectorPerUnitScale();
+            var axisSquared = Vector3.Dot(axisVector, axisVector);
+            if (axisSquared <= 1e-14f) return float.NaN;
+
+            var currentScale = GetAxis(_adjuster.Scale, _axis);
+
             if (_measurementMode == MeasurementMode.AxisProjected)
             {
-                var component = Mathf.Abs(GetAxis(c, _axis));
-                return component <= 1e-7f ? float.NaN : target / component;
+                var magnitude = target / Mathf.Sqrt(axisSquared);
+                return currentScale < 0f ? -magnitude : magnitude;
             }
 
-            var s = _adjuster.Scale;
-            var axisComponent = Mathf.Abs(GetAxis(c, _axis));
-            if (axisComponent <= 1e-7f) return float.NaN;
+            // Keep the other two MA Scale components fixed. The resulting world-space
+            // endpoint is:
+            //
+            //     fixedVector + axisVector * x
+            //
+            // where x is the selected MA Scale component. Under a rotated non-uniform
+            // parent scale these vectors are generally not orthogonal, so the previous
+            // Pythagorean solution was incorrect. Solve the exact quadratic instead:
+            //
+            //     |fixedVector + axisVector*x|^2 = target^2
+            var fixedScale = _adjuster.Scale;
+            SetAxis(ref fixedScale, _axis, 0f);
+            var fixedVector = GetWorldVectorForScale(fixedScale);
 
-            float fixedSquared = 0f;
-            if (_axis != BoneAxis.X) fixedSquared += Square(c.x * s.x);
-            if (_axis != BoneAxis.Y) fixedSquared += Square(c.y * s.y);
-            if (_axis != BoneAxis.Z) fixedSquared += Square(c.z * s.z);
+            var a = axisSquared;
+            var b = 2f * Vector3.Dot(fixedVector, axisVector);
+            var cc = Vector3.Dot(fixedVector, fixedVector) - Square(target);
+            var discriminant = b * b - 4f * a * cc;
 
-            var targetSquared = Square(target);
-            if (targetSquared + 1e-8f < fixedSquared) return float.NaN;
+            // Small negative values can arise from float roundoff at a tangent.
+            var tolerance = 1e-6f * Mathf.Max(1f, b * b + Mathf.Abs(4f * a * cc));
+            if (discriminant < -tolerance) return float.NaN;
+            discriminant = Mathf.Max(0f, discriminant);
 
-            return Mathf.Sqrt(Mathf.Max(0f, targetSquared - fixedSquared)) / axisComponent;
+            var sqrtDiscriminant = Mathf.Sqrt(discriminant);
+            var denominator = 2f * a;
+            var rootA = (-b + sqrtDiscriminant) / denominator;
+            var rootB = (-b - sqrtDiscriminant) / denominator;
+
+            // Both roots produce the requested length. Choosing the one nearest the
+            // current value avoids an unexpected sign flip or a large discontinuity.
+            return Mathf.Abs(rootA - currentScale) <= Mathf.Abs(rootB - currentScale)
+                ? rootA
+                : rootB;
         }
 
         private bool IsNearlyAxisAligned()
