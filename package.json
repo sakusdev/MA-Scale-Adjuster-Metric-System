@@ -1,0 +1,14 @@
+{
+  "name": "dev.sakus.ma-scale-adjuster-metric-system",
+  "displayName": "MA Scale Adjuster Metric System",
+  "version": "0.1.0",
+  "unity": "2022.3",
+  "description": "Edit Modular Avatar Scale Adjuster values using metric bone lengths.",
+  "author": {
+    "name": "sakusdev",
+    "url": "https://github.com/sakusdev"
+  },
+  "vpmDependencies": {
+    "nadena.dev.modular-avatar": ">=1.18.0"
+  }
+}
