@@ -15,6 +15,35 @@ A Unity Editor extension for editing **Modular Avatar / MA Scale Adjuster** from
 - Supports Unity Undo and prefab-instance overrides.
 - Does not patch or modify Modular Avatar.
 
+## Installation
+
+### Recommended: VCC / VPM
+
+Repository URL:
+
+```text
+https://raw.githubusercontent.com/sakusdev/MA-Scale-Adjuster-Metric-System/vpm/index.json
+```
+
+1. Open **VRChat Creator Companion**.
+2. Open **Settings > Packages**.
+3. Click **Add Repository**.
+4. Paste the repository URL above and add it.
+5. Open **Manage Project** for your avatar project.
+6. Add **MA Scale Adjuster Metric System** with the `+` button.
+
+One-click VCC link:
+
+```text
+vcc://vpm/addRepo?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsakusdev%2FMA-Scale-Adjuster-Metric-System%2Fvpm%2Findex.json
+```
+
+Modular Avatar is declared as a VPM dependency. If VCC cannot resolve it, add the Modular Avatar VPM repository first.
+
+### GitHub Release ZIP
+
+Each released version also provides a VPM-compatible ZIP on the GitHub Releases page. The ZIP has `package.json` at its root and can be used as a local package if needed.
+
 ## Requirements
 
 - Unity 2022.3
