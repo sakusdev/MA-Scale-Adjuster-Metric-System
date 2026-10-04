@@ -585,7 +585,8 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
             if (!MetricScaleMath.IsFinite(selectedAxisScale) || _adjuster == null) return;
             if (_keepFeetGrounded && !TryValidateGrounding(out _)) return;
 
-            var useGrounding = _keepFeetGrounded && TryGetLowestGroundY(out var groundYBefore);
+            var groundYBefore = 0f;
+            var useGrounding = _keepFeetGrounded && TryGetLowestGroundY(out groundYBefore);
             var compensation = useGrounding ? _groundCompensation : null;
 
             var oldScale = _adjuster.Scale;
