@@ -1,0 +1,116 @@
+name: Release VPM Package
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+      - Editor/**
+      - LICENSE
+      - README.md
+      - Third Party Notices.md
+      - source.json
+      - Website/**
+      - .github/workflows/release-vpm.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-vpm
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      PACKAGE_NAME: dev.sakus.ma-scale-adjuster-metric-system
+      REPO_URL: https://raw.githubusercontent.com/sakusdev/MA-Scale-Adjuster-Metric-System/vpm/index.json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read package version
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(python -c 'import json; print(json.load(open("package.json"))["version"])')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "zip=$PACKAGE_NAME-$VERSION.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Build VPM package zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist/package
+          cp -a Editor dist/package/
+          cp package.json LICENSE README.md "Third Party Notices.md" dist/package/
+          (
+            cd dist/package
+            zip -r "../${{ steps.package.outputs.zip }}" .
+          )
+          sha256sum "dist/${{ steps.package.outputs.zip }}"
+
+      - name: Validate zip root
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -l "dist/${{ steps.package.outputs.zip }}"
+          unzip -p "dist/${{ steps.package.outputs.zip }}" package.json | python -m json.tool >/dev/null
+
+      - name: Create GitHub Release if missing
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.package.outputs.tag }}"
+          ZIP="dist/${{ steps.package.outputs.zip }}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; keeping existing release."
+          else
+            gh release create "$TAG" "$ZIP" package.json               --target "${{ github.sha }}"               --title "MA Scale Adjuster Metric System ${{ steps.package.outputs.version }}"               --notes "VPM package release for MA Scale Adjuster Metric System ${{ steps.package.outputs.version }}."
+          fi
+
+      - name: Checkout VPM listing builder
+        uses: actions/checkout@v4
+        with:
+          repository: vrchat-community/package-list-action
+          path: ci
+          clean: false
+
+      - name: Build VPM repository index
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ./ci/build.cmd BuildRepoListing             --root "$GITHUB_WORKSPACE/ci"             --list-publish-directory "$GITHUB_WORKSPACE/Website"             --current-package-name "$PACKAGE_NAME"             --current-listing-url "$REPO_URL"
+
+      - name: Publish VPM repository branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/vpm-publish
+          mkdir -p /tmp/vpm-publish
+          cp -a Website/. /tmp/vpm-publish/
+          touch /tmp/vpm-publish/.nojekyll
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --orphan vpm-publish
+          git rm -rf . || true
+          git clean -fdx
+          cp -a /tmp/vpm-publish/. .
+          git add -A
+          git commit -m "chore: publish VPM repository for v${{ steps.package.outputs.version }}"
+          git push --force origin HEAD:vpm
