@@ -11,8 +11,38 @@ A Unity Editor extension for editing **Modular Avatar / MA Scale Adjuster** from
 - Solves the required MA Scale value from a target length in metres.
 - Correctly handles rotated bones and non-uniform parent scale.
 - Can reposition direct child bones using the same coordinate conversion used by Modular Avatar's Scale Adjuster tool.
+- Can keep Humanoid feet grounded after leg-length edits by vertically compensating the Hips transform.
 - Supports Unity Undo and prefab-instance overrides.
 - Does not patch or modify Modular Avatar.
+
+## Installation
+
+### Recommended: VCC / VPM
+
+Repository URL:
+
+```text
+https://raw.githubusercontent.com/sakusdev/MA-Scale-Adjuster-Metric-System/vpm/index.json
+```
+
+1. Open **VRChat Creator Companion**.
+2. Open **Settings > Packages**.
+3. Click **Add Repository**.
+4. Paste the repository URL above and add it.
+5. Open **Manage Project** for your avatar project.
+6. Add **MA Scale Adjuster Metric System** with the `+` button.
+
+One-click VCC link:
+
+```text
+vcc://vpm/addRepo?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsakusdev%2FMA-Scale-Adjuster-Metric-System%2Fvpm%2Findex.json
+```
+
+Modular Avatar is declared as a VPM dependency. If VCC cannot resolve it, add the Modular Avatar VPM repository first.
+
+### GitHub Release ZIP
+
+Each released version also provides a VPM-compatible ZIP on the GitHub Releases page. The ZIP has `package.json` at its root and can be used as a local package if needed.
 
 ## Requirements
 
@@ -39,6 +69,18 @@ You can also open the tool from the MA Scale Adjuster component context menu wit
 When enabled, the target length is the actual parent-to-child transform distance after applying the change. All direct children are repositioned using the same scale-coordinate conversion strategy as Modular Avatar's editor tool.
 
 When disabled, child transforms are left untouched. The metric value then describes the virtual Scale Adjuster deformation vector rather than the actual transform distance.
+
+## Keep feet grounded
+
+Enable **Keep feet grounded (world Y)** when changing leg length.
+
+For a Humanoid avatar, the tool automatically uses **LeftFoot** and **RightFoot** as ground references and **Hips** as the compensation transform. After the Scale Adjuster edit, it compares the lowest foot height before and after the change, then moves the compensation transform only on world Y so the lowest foot stays at the same height.
+
+Using the lowest of both feet is intentional: it avoids repeatedly lifting the avatar when the left and right legs are edited one after another.
+
+For non-Humanoid rigs, you can manually assign one or two ground-reference transforms and a compensation transform. The compensation transform must be the adjusted bone itself or an ancestor of it, and every ground reference must be below that transform.
+
+This feature requires **Adjust child positions like Modular Avatar** because Scale Adjuster values alone do not move the real child-bone transforms.
 
 ## Measurement modes
 

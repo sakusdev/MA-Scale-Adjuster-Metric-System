@@ -18,13 +18,17 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
         private float _targetMetres = 0.1f;
         private bool _followSelection = true;
         private bool _adjustChildPositions = true;
+        private bool _keepFeetGrounded;
+        private Transform _groundReferenceA;
+        private Transform _groundReferenceB;
+        private Transform _groundCompensation;
 
         [MenuItem("Tools/MA Scale Adjuster Metric System")]
         public static void Open()
         {
             var window = GetWindow<MAScaleAdjusterMetricWindow>();
             window.titleContent = new GUIContent("MA Metric");
-            window.minSize = new Vector2(400, 390);
+            window.minSize = new Vector2(420, 500);
             window.TryUseSelection();
             window.Show();
         }
@@ -37,6 +41,7 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
             window._adjuster = command.context as ModularAvatarScaleAdjuster;
             window.PickDefaultChild();
             window.AutoDetectAxis();
+            window.ResetGroundingTargets();
             window.SyncTargetToCurrent();
             window.Show();
         }
@@ -68,6 +73,7 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
             _child = null;
             PickDefaultChild();
             AutoDetectAxis();
+            ResetGroundingTargets();
             SyncTargetToCurrent();
         }
 
@@ -109,6 +115,7 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
                 _child = null;
                 PickDefaultChild();
                 AutoDetectAxis();
+                ResetGroundingTargets();
                 SyncTargetToCurrent();
             }
 
@@ -161,7 +168,23 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
             EditorGUI.BeginChangeCheck();
             _adjustChildPositions = EditorGUILayout.ToggleLeft(
                 "Adjust child positions like Modular Avatar", _adjustChildPositions);
-            if (EditorGUI.EndChangeCheck()) SyncTargetToCurrent();
+            if (EditorGUI.EndChangeCheck())
+            {
+                if (!_adjustChildPositions) _keepFeetGrounded = false;
+                SyncTargetToCurrent();
+            }
+
+            using (new EditorGUI.DisabledScope(!_adjustChildPositions))
+            {
+                EditorGUI.BeginChangeCheck();
+                _keepFeetGrounded = EditorGUILayout.ToggleLeft(
+                    "Keep feet grounded (world Y)", _keepFeetGrounded);
+                if (EditorGUI.EndChangeCheck() && _keepFeetGrounded)
+                    AutoDetectGroundingTargets();
+            }
+
+            if (_keepFeetGrounded)
+                DrawGroundingControls();
 
             EditorGUILayout.Space(8);
 
@@ -233,8 +256,11 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
             }
 
             EditorGUILayout.Space(8);
+            var groundingValid = !_keepFeetGrounded || TryValidateGrounding(out _);
             using (new EditorGUI.DisabledScope(
-                       !MetricScaleMath.IsFinite(resultingScale) || Mathf.Approximately(currentAxisScale, resultingScale)))
+                       !MetricScaleMath.IsFinite(resultingScale)
+                       || Mathf.Approximately(currentAxisScale, resultingScale)
+                       || !groundingValid))
             {
                 if (GUILayout.Button("Apply to MA Scale Adjuster", GUILayout.Height(30)))
                     Apply(resultingScale);
@@ -247,6 +273,150 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
             EditorGUILayout.HelpBox(
                 "1 Unity unit is treated as 1 metre. Full Length measures the complete 3D endpoint distance; Axis Projected measures the component along the selected bone-local axis.",
                 MessageType.None);
+        }
+
+        private void DrawGroundingControls()
+        {
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("Grounding", EditorStyles.boldLabel);
+
+            _groundReferenceA = (Transform)EditorGUILayout.ObjectField(
+                "Ground reference A", _groundReferenceA, typeof(Transform), true);
+            _groundReferenceB = (Transform)EditorGUILayout.ObjectField(
+                "Ground reference B", _groundReferenceB, typeof(Transform), true);
+            _groundCompensation = (Transform)EditorGUILayout.ObjectField(
+                "Move to compensate", _groundCompensation, typeof(Transform), true);
+
+            if (GUILayout.Button("Auto-detect Humanoid feet / hips"))
+                AutoDetectGroundingTargets();
+
+            if (!TryValidateGrounding(out var reason))
+            {
+                EditorGUILayout.HelpBox(reason, MessageType.Warning);
+                return;
+            }
+
+            if (TryGetLowestGroundY(out var currentGroundY))
+            {
+                using (new EditorGUI.DisabledScope(true))
+                    EditorGUILayout.FloatField("Current ground reference Y", currentGroundY);
+            }
+
+            EditorGUILayout.HelpBox(
+                "After the metric edit, the compensation transform is moved only on world Y so the lowest selected ground reference keeps the same height. With a Humanoid avatar, LeftFoot/RightFoot and Hips are detected automatically.",
+                MessageType.None);
+        }
+
+        private void ResetGroundingTargets()
+        {
+            _groundReferenceA = null;
+            _groundReferenceB = null;
+            _groundCompensation = null;
+
+            if (_keepFeetGrounded)
+                AutoDetectGroundingTargets();
+        }
+
+        private void AutoDetectGroundingTargets()
+        {
+            if (_adjuster == null) return;
+
+            var animator = _adjuster.GetComponentInParent<Animator>();
+            if (animator != null && animator.isHuman)
+            {
+                _groundReferenceA = animator.GetBoneTransform(HumanBodyBones.LeftFoot);
+                _groundReferenceB = animator.GetBoneTransform(HumanBodyBones.RightFoot);
+                _groundCompensation = animator.GetBoneTransform(HumanBodyBones.Hips);
+
+                if (_groundCompensation == null)
+                    _groundCompensation = animator.transform;
+
+                if (_groundReferenceA == null && _groundReferenceB != null)
+                {
+                    _groundReferenceA = _groundReferenceB;
+                    _groundReferenceB = null;
+                }
+
+                if (_groundReferenceA == null && _groundReferenceB == null)
+                    _groundReferenceA = _child;
+            }
+            else
+            {
+                _groundReferenceA = _child;
+                _groundReferenceB = null;
+                _groundCompensation = animator != null
+                    ? animator.transform
+                    : _adjuster.transform.root;
+            }
+        }
+
+        private bool TryValidateGrounding(out string reason)
+        {
+            reason = null;
+
+            if (!_keepFeetGrounded)
+                return true;
+
+            if (!_adjustChildPositions)
+            {
+                reason = "Keep Feet Grounded requires child-position adjustment.";
+                return false;
+            }
+
+            if (_groundReferenceA == null && _groundReferenceB == null)
+            {
+                reason = "Assign at least one ground reference transform.";
+                return false;
+            }
+
+            if (_groundCompensation == null)
+            {
+                reason = "Assign a compensation transform (normally Humanoid Hips).";
+                return false;
+            }
+
+            if (_adjuster == null
+                || (_adjuster.transform != _groundCompensation
+                    && !_adjuster.transform.IsChildOf(_groundCompensation)))
+            {
+                reason = "The compensation transform must be the adjusted bone itself or one of its ancestors.";
+                return false;
+            }
+
+            if (!IsGroundReferenceUnderCompensation(_groundReferenceA)
+                || !IsGroundReferenceUnderCompensation(_groundReferenceB))
+            {
+                reason = "Each ground reference must be a descendant of the compensation transform.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool IsGroundReferenceUnderCompensation(Transform reference)
+        {
+            return reference == null
+                   || (_groundCompensation != null && reference.IsChildOf(_groundCompensation));
+        }
+
+        private bool TryGetLowestGroundY(out float y)
+        {
+            y = float.PositiveInfinity;
+            var found = false;
+
+            if (_groundReferenceA != null)
+            {
+                y = _groundReferenceA.position.y;
+                found = true;
+            }
+
+            if (_groundReferenceB != null)
+            {
+                y = found ? Mathf.Min(y, _groundReferenceB.position.y) : _groundReferenceB.position.y;
+                found = true;
+            }
+
+            return found && MetricScaleMath.IsFinite(y);
         }
 
         private float GetCurrentLengthMetres()
@@ -413,6 +583,10 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
         private void Apply(float selectedAxisScale)
         {
             if (!MetricScaleMath.IsFinite(selectedAxisScale) || _adjuster == null) return;
+            if (_keepFeetGrounded && !TryValidateGrounding(out _)) return;
+
+            var useGrounding = _keepFeetGrounded && TryGetLowestGroundY(out var groundYBefore);
+            var compensation = useGrounding ? _groundCompensation : null;
 
             var oldScale = _adjuster.Scale;
             var newScale = oldScale;
@@ -420,6 +594,9 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
 
             var undoGroup = Undo.GetCurrentGroup();
             Undo.SetCurrentGroupName("Set MA Scale Adjuster metric length");
+
+            if (useGrounding)
+                Undo.RecordObject(compensation, "Keep feet grounded");
 
             if (_adjustChildPositions)
             {
@@ -440,6 +617,20 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
             _adjuster.Scale = newScale;
             EditorUtility.SetDirty(_adjuster);
             PrefabUtility.RecordPrefabInstancePropertyModifications(_adjuster);
+
+            if (useGrounding && TryGetLowestGroundY(out var groundYAfter))
+            {
+                var deltaY = groundYBefore - groundYAfter;
+                if (MetricScaleMath.IsFinite(deltaY) && !Mathf.Approximately(deltaY, 0f))
+                {
+                    var worldPosition = compensation.position;
+                    worldPosition.y += deltaY;
+                    compensation.position = worldPosition;
+
+                    EditorUtility.SetDirty(compensation);
+                    PrefabUtility.RecordPrefabInstancePropertyModifications(compensation);
+                }
+            }
 
             Undo.CollapseUndoOperations(undoGroup);
             SceneView.RepaintAll();

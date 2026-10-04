@@ -1,0 +1,18 @@
+{
+  "name": "sakusdev VPM Repository",
+  "id": "dev.sakus.vpm",
+  "url": "https://raw.githubusercontent.com/sakusdev/MA-Scale-Adjuster-Metric-System/vpm/index.json",
+  "author": {
+    "name": "sakusdev",
+    "email": "105345796+sakusdev@users.noreply.github.com",
+    "url": "https://github.com/sakusdev"
+  },
+  "description": "VPM packages by sakusdev",
+  "infoLink": {
+    "url": "https://github.com/sakusdev/MA-Scale-Adjuster-Metric-System",
+    "text": "View on GitHub"
+  },
+  "githubRepos": [
+    "sakusdev/MA-Scale-Adjuster-Metric-System"
+  ]
+}
