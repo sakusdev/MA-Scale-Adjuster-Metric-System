@@ -2,9 +2,96 @@ using UnityEngine;
 
 namespace SakusDev.MAScaleAdjusterMetricSystem
 {
+    internal enum LengthUnit
+    {
+        Metres,
+        Centimetres,
+        Millimetres,
+        Inches,
+        Feet,
+        FeetAndInches,
+        Yards
+    }
+
     internal static class MetricScaleMath
     {
         internal const float ScaleThreshold = 1f / (1 << 14);
+        internal const float MetresPerCentimetre = 0.01f;
+        internal const float MetresPerMillimetre = 0.001f;
+        internal const float MetresPerInch = 0.0254f;
+        internal const float InchesPerFoot = 12f;
+        internal const float MetresPerFoot = MetresPerInch * InchesPerFoot;
+        internal const float MetresPerYard = MetresPerFoot * 3f;
+
+        internal static float GetMetresPerUnit(LengthUnit unit)
+        {
+            switch (unit)
+            {
+                case LengthUnit.Metres: return 1f;
+                case LengthUnit.Centimetres: return MetresPerCentimetre;
+                case LengthUnit.Millimetres: return MetresPerMillimetre;
+                case LengthUnit.Inches: return MetresPerInch;
+                case LengthUnit.Feet: return MetresPerFoot;
+                case LengthUnit.FeetAndInches: return MetresPerInch;
+                case LengthUnit.Yards: return MetresPerYard;
+                default: return 1f;
+            }
+        }
+
+        internal static string GetUnitSymbol(LengthUnit unit)
+        {
+            switch (unit)
+            {
+                case LengthUnit.Metres: return "m";
+                case LengthUnit.Centimetres: return "cm";
+                case LengthUnit.Millimetres: return "mm";
+                case LengthUnit.Inches: return "in";
+                case LengthUnit.Feet: return "ft";
+                case LengthUnit.FeetAndInches: return "ft & in";
+                case LengthUnit.Yards: return "yd";
+                default: return "m";
+            }
+        }
+
+        internal static float UnitToMetres(float value, LengthUnit unit)
+        {
+            return unit == LengthUnit.Metres ? value : value * GetMetresPerUnit(unit);
+        }
+
+        internal static float MetresToUnit(float metres, LengthUnit unit)
+        {
+            return unit == LengthUnit.Metres ? metres : metres / GetMetresPerUnit(unit);
+        }
+
+        internal static float FeetAndInchesToMetres(int feet, float inches)
+        {
+            return (feet * InchesPerFoot + inches) * MetresPerInch;
+        }
+
+        internal static void MetresToFeetAndInches(float metres, out int feet, out float inches)
+        {
+            if (!IsFinite(metres))
+            {
+                feet = 0;
+                inches = float.NaN;
+                return;
+            }
+
+            var totalInches = metres / MetresPerInch;
+            var sign = totalInches < 0f ? -1 : 1;
+            var absInches = Mathf.Abs(totalInches);
+            var wholeFeet = Mathf.FloorToInt(absInches / InchesPerFoot);
+            var remainingInches = absInches - wholeFeet * InchesPerFoot;
+
+            if (InchesPerFoot - remainingInches <= 1e-4f)
+            {
+                wholeFeet += 1;
+                remainingInches = 0f;
+            }
+
+            feet = sign * wholeFeet;
+            inches = sign * remainingInches;
+        }
 
         internal static Vector3 TransformChildPosition(
             Vector3 childLocalPosition,

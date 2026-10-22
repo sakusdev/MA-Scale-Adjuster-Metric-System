@@ -11,11 +11,25 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
         private enum BoneAxis { X, Y, Z }
         private enum MeasurementMode { FullLength, AxisProjected }
 
+        private static readonly string[] LengthUnitLabels =
+        {
+            "Metres (m)",
+            "Centimetres (cm)",
+            "Millimetres (mm)",
+            "Inches (in)",
+            "Feet (ft)",
+            "Feet & Inches (ft, in)",
+            "Yards (yd)"
+        };
+
         private ModularAvatarScaleAdjuster _adjuster;
         private Transform _child;
         private BoneAxis _axis = BoneAxis.Y;
         private MeasurementMode _measurementMode = MeasurementMode.FullLength;
+        private LengthUnit _lengthUnit = LengthUnit.Metres;
         private float _targetMetres = 0.1f;
+        private int _targetFeet;
+        private float _targetInches = 0.1f / MetricScaleMath.MetresPerInch;
         private bool _followSelection = true;
         private bool _adjustChildPositions = true;
         private bool _keepFeetGrounded;
@@ -101,7 +115,7 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
         private void OnGUI()
         {
             EditorGUILayout.LabelField("MA Scale Adjuster Metric System", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField("Set MA Scale Adjuster from a real bone length in metres", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("Set MA Scale Adjuster from a real bone length (Metric / Imperial)", EditorStyles.miniLabel);
             EditorGUILayout.Space(6);
 
             _followSelection = EditorGUILayout.ToggleLeft("Follow Unity selection", _followSelection);
@@ -166,6 +180,11 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
             if (EditorGUI.EndChangeCheck()) SyncTargetToCurrent();
 
             EditorGUI.BeginChangeCheck();
+            _lengthUnit = (LengthUnit)EditorGUILayout.Popup("Length unit", (int)_lengthUnit, LengthUnitLabels);
+            if (EditorGUI.EndChangeCheck())
+                SyncFeetAndInchesFromTargetMetres();
+
+            EditorGUI.BeginChangeCheck();
             _adjustChildPositions = EditorGUILayout.ToggleLeft(
                 "Adjust child positions like Modular Avatar", _adjustChildPositions);
             if (EditorGUI.EndChangeCheck())
@@ -190,15 +209,53 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
 
             var currentLength = GetCurrentLengthMetres();
             var currentAxisScale = GetAxis(_adjuster.Scale, _axis);
+            var unitSymbol = MetricScaleMath.GetUnitSymbol(_lengthUnit);
 
             using (new EditorGUI.DisabledScope(true))
             {
-                EditorGUILayout.FloatField("Current length (m)", currentLength);
+                if (_lengthUnit == LengthUnit.FeetAndInches)
+                {
+                    MetricScaleMath.MetresToFeetAndInches(currentLength, out var currentFeet, out var currentInches);
+                    DrawFeetAndInchesField("Current length (ft / in)", ref currentFeet, ref currentInches);
+                }
+                else
+                {
+                    EditorGUILayout.FloatField(
+                        $"Current length ({unitSymbol})",
+                        MetricScaleMath.MetresToUnit(currentLength, _lengthUnit));
+                }
+
+                if (_lengthUnit != LengthUnit.Metres)
+                    EditorGUILayout.FloatField("Current length (m)", currentLength);
+
                 EditorGUILayout.Vector3Field("MA Scale", _adjuster.Scale);
             }
 
             EditorGUILayout.Space(4);
-            _targetMetres = EditorGUILayout.FloatField("Target length (m)", _targetMetres);
+            if (_lengthUnit == LengthUnit.FeetAndInches)
+            {
+                EditorGUI.BeginChangeCheck();
+                DrawFeetAndInchesField("Target length (ft / in)", ref _targetFeet, ref _targetInches);
+                if (EditorGUI.EndChangeCheck())
+                    _targetMetres = MetricScaleMath.FeetAndInchesToMetres(_targetFeet, _targetInches);
+            }
+            else
+            {
+                var displayTarget = MetricScaleMath.MetresToUnit(_targetMetres, _lengthUnit);
+                EditorGUI.BeginChangeCheck();
+                var nextDisplayTarget = EditorGUILayout.FloatField($"Target length ({unitSymbol})", displayTarget);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    _targetMetres = MetricScaleMath.UnitToMetres(nextDisplayTarget, _lengthUnit);
+                    SyncFeetAndInchesFromTargetMetres();
+                }
+            }
+
+            if (_lengthUnit != LengthUnit.Metres)
+            {
+                using (new EditorGUI.DisabledScope(true))
+                    EditorGUILayout.FloatField("Target in metres (m)", _targetMetres);
+            }
 
             if (!MetricScaleMath.IsFinite(currentLength))
             {
@@ -299,7 +356,20 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
             if (TryGetLowestGroundY(out var currentGroundY))
             {
                 using (new EditorGUI.DisabledScope(true))
-                    EditorGUILayout.FloatField("Current ground reference Y", currentGroundY);
+                {
+                    if (_lengthUnit == LengthUnit.FeetAndInches)
+                    {
+                        MetricScaleMath.MetresToFeetAndInches(currentGroundY, out var groundFeet, out var groundInches);
+                        DrawFeetAndInchesField("Current ground Y (ft / in)", ref groundFeet, ref groundInches);
+                    }
+                    else
+                    {
+                        var groundSymbol = MetricScaleMath.GetUnitSymbol(_lengthUnit);
+                        EditorGUILayout.FloatField(
+                            $"Current ground reference Y ({groundSymbol})",
+                            MetricScaleMath.MetresToUnit(currentGroundY, _lengthUnit));
+                    }
+                }
             }
 
             EditorGUILayout.HelpBox(
@@ -577,7 +647,31 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
         {
             if (_adjuster == null || _child == null) return;
             _targetMetres = GetCurrentLengthMetres();
+            SyncFeetAndInchesFromTargetMetres();
             Repaint();
+        }
+
+        private void SyncFeetAndInchesFromTargetMetres()
+        {
+            MetricScaleMath.MetresToFeetAndInches(_targetMetres, out _targetFeet, out _targetInches);
+        }
+
+        private static void DrawFeetAndInchesField(string label, ref int feet, ref float inches)
+        {
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.PrefixLabel(label);
+            var prevLabelWidth = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = 18f;
+            try
+            {
+                feet = EditorGUILayout.IntField("ft", feet, GUILayout.MinWidth(60f));
+                inches = EditorGUILayout.FloatField("in", inches, GUILayout.MinWidth(70f));
+            }
+            finally
+            {
+                EditorGUIUtility.labelWidth = prevLabelWidth;
+            }
+            EditorGUILayout.EndHorizontal();
         }
 
         private void Apply(float selectedAxisScale)

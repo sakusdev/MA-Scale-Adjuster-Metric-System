@@ -1,9 +1,9 @@
 {
   "name": "dev.sakus.ma-scale-adjuster-metric-system",
   "displayName": "MA Scale Adjuster Metric System",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "unity": "2022.3",
-  "description": "Edit Modular Avatar Scale Adjuster values using real metric bone lengths, with optional foot-grounding compensation.",
+  "description": "Edit Modular Avatar Scale Adjuster values using real metric or imperial (yard-pound) bone lengths, with optional foot-grounding compensation.",
   "license": "MIT",
   "author": {
     "name": "sakusdev",

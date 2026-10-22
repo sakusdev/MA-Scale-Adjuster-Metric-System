@@ -4,11 +4,11 @@ A Unity Editor extension for editing **Modular Avatar / MA Scale Adjuster** from
 
 ## Features
 
-- Treats **1 Unity unit as 1 metre**.
+- Treats **1 Unity unit as 1 metre** internally, with built-in **Metric (`m`, `cm`, `mm`)** and **Imperial / Yard-Pound (`in`, `ft`, `ft & in`, `yd`)** unit conversion.
 - Measures from the Scale Adjuster bone to a selected direct child.
 - Supports **Full Length** and **Axis Projected** measurement.
 - Auto-detects the bone's dominant local X / Y / Z axis.
-- Solves the required MA Scale value from a target length in metres.
+- Solves the required MA Scale value from a target length in the selected unit.
 - Correctly handles rotated bones and non-uniform parent scale.
 - Can reposition direct child bones using the same coordinate conversion used by Modular Avatar's Scale Adjuster tool.
 - Can keep Humanoid feet grounded after leg-length edits by vertically compensating the Hips transform.
@@ -57,8 +57,9 @@ Each released version also provides a VPM-compatible ZIP on the GitHub Releases 
 4. Choose the child used as the bone endpoint.
 5. Select or auto-detect the primary axis.
 6. Choose **Full Length** or **Axis Projected**.
-7. Enter **Target length (m)**.
-8. Click **Apply to MA Scale Adjuster**.
+7. Choose your preferred **Length unit** (`m`, `cm`, `mm`, `in`, `ft`, `ft & in`, `yd`).
+8. Enter **Target length**.
+9. Click **Apply to MA Scale Adjuster**.
 
 You can also open the tool from the MA Scale Adjuster component context menu with **Edit in Metric System**.
 

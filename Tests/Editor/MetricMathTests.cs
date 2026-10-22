@@ -154,5 +154,22 @@ namespace SakusDev.MAScaleAdjusterMetricSystem.Tests
 
             Assert.That(solved, Is.EqualTo(2f).Within(1e-6f));
         }
+
+        [Test]
+        public void UnitConversion_MetricAndImperial_RoundTripsAccurately()
+        {
+            Assert.That(MetricScaleMath.UnitToMetres(100f, LengthUnit.Centimetres), Is.EqualTo(1f).Within(1e-6f));
+            Assert.That(MetricScaleMath.UnitToMetres(1000f, LengthUnit.Millimetres), Is.EqualTo(1f).Within(1e-6f));
+            Assert.That(MetricScaleMath.UnitToMetres(1f, LengthUnit.Inches), Is.EqualTo(0.0254f).Within(1e-6f));
+            Assert.That(MetricScaleMath.UnitToMetres(1f, LengthUnit.Feet), Is.EqualTo(0.3048f).Within(1e-6f));
+            Assert.That(MetricScaleMath.UnitToMetres(1f, LengthUnit.Yards), Is.EqualTo(0.9144f).Within(1e-6f));
+
+            var metres = MetricScaleMath.FeetAndInchesToMetres(1, 6.5f);
+            Assert.That(metres, Is.EqualTo(18.5f * 0.0254f).Within(1e-6f));
+
+            MetricScaleMath.MetresToFeetAndInches(metres, out var feet, out var inches);
+            Assert.That(feet, Is.EqualTo(1));
+            Assert.That(inches, Is.EqualTo(6.5f).Within(1e-5f));
+        }
     }
 }
