@@ -96,13 +96,14 @@ jobs:
           set -euo pipefail
           tmp="$(mktemp -d)"
           mkdir -p "$tmp/package"
-          cp -a Editor "$tmp/package/"
+          cp -a Editor Editor.meta "$tmp/package/"
           cp package.json LICENSE README.md "Third Party Notices.md" "$tmp/package/"
           (
             cd "$tmp/package"
             zip -qr "$tmp/package.zip" .
           )
           test "$(unzip -Z1 "$tmp/package.zip" | grep -c '^package.json$')" -eq 1
+          test "$(unzip -Z1 "$tmp/package.zip" | grep -c '^Editor.meta$')" -eq 1
           unzip -p "$tmp/package.zip" package.json | python -m json.tool >/dev/null
 
       - name: Parse all C# files with Roslyn
