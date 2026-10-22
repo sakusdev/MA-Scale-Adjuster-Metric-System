@@ -13,6 +13,13 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
         Yards
     }
 
+    internal enum CrossSectionMode
+    {
+        Preserve,
+        Proportional,
+        MaintainVolume
+    }
+
     internal static class MetricScaleMath
     {
         internal const float ScaleThreshold = 1f / (1 << 14);
@@ -178,6 +185,147 @@ namespace SakusDev.MAScaleAdjusterMetricSystem
         internal static bool IsFinite(float value)
         {
             return !float.IsNaN(value) && !float.IsInfinity(value);
+        }
+
+        internal static Vector3 BuildTargetScale(
+            Vector3 oldScale,
+            int primaryAxisIndex,
+            float newPrimaryScale,
+            CrossSectionMode mode)
+        {
+            var result = oldScale;
+            SetAxisByIndex(ref result, primaryAxisIndex, newPrimaryScale);
+
+            if (mode == CrossSectionMode.Preserve || !IsFinite(newPrimaryScale))
+                return result;
+
+            var oldPrimary = Mathf.Max(ScaleThreshold, GetAxisByIndex(oldScale, primaryAxisIndex));
+            var newPrimary = Mathf.Max(ScaleThreshold, newPrimaryScale);
+            var ratio = newPrimary / oldPrimary;
+            if (!IsFinite(ratio) || ratio <= 0f)
+                return result;
+
+            var secondaryFactor = mode == CrossSectionMode.Proportional
+                ? ratio
+                : 1f / Mathf.Sqrt(ratio);
+
+            for (var i = 0; i < 3; i++)
+            {
+                if (i == primaryAxisIndex) continue;
+                SetAxisByIndex(ref result, i, GetAxisByIndex(oldScale, i) * secondaryFactor);
+            }
+
+            return result;
+        }
+
+        internal static float CalculateBoneLengthForHeightDelta(
+            float currentBoneLength,
+            float boneWorldDeltaY,
+            float heightDeltaMetres,
+            bool compensateBoneTilt)
+        {
+            if (!IsFinite(currentBoneLength) || !IsFinite(heightDeltaMetres))
+                return float.NaN;
+
+            if (!compensateBoneTilt)
+                return Mathf.Max(0f, currentBoneLength + heightDeltaMetres);
+
+            var absY = Mathf.Abs(boneWorldDeltaY);
+            if (absY <= 1e-5f || currentBoneLength <= 1e-6f)
+                return Mathf.Max(0f, currentBoneLength + heightDeltaMetres);
+
+            var cosTheta = Mathf.Clamp(absY / currentBoneLength, 0.1f, 1f);
+            return Mathf.Max(0f, currentBoneLength + heightDeltaMetres / cosTheta);
+        }
+
+        internal static bool TryGetMirroredBoneName(string name, out string mirrored)
+        {
+            mirrored = null;
+            if (string.IsNullOrEmpty(name)) return false;
+
+            if (TryReplaceWordPair(name, "Left", "Right", out mirrored)) return true;
+            if (TryReplaceWordPair(name, "left", "right", out mirrored)) return true;
+            if (TryReplaceWordPair(name, "LEFT", "RIGHT", out mirrored)) return true;
+
+            string[] suffixesL = { ".L", "_L", "-L", " L", ".l", "_l", "-l", " l" };
+            string[] suffixesR = { ".R", "_R", "-R", " R", ".r", "_r", "-r", " r" };
+            for (var i = 0; i < suffixesL.Length; i++)
+            {
+                if (name.EndsWith(suffixesL[i], System.StringComparison.Ordinal))
+                {
+                    mirrored = name.Substring(0, name.Length - suffixesL[i].Length) + suffixesR[i];
+                    return true;
+                }
+                if (name.EndsWith(suffixesR[i], System.StringComparison.Ordinal))
+                {
+                    mirrored = name.Substring(0, name.Length - suffixesR[i].Length) + suffixesL[i];
+                    return true;
+                }
+            }
+
+            string[] prefixesL = { "L_", "L.", "L-", "L ", "l_", "l.", "l-", "l " };
+            string[] prefixesR = { "R_", "R.", "R-", "R ", "r_", "r.", "r-", "r " };
+            for (var i = 0; i < prefixesL.Length; i++)
+            {
+                if (name.StartsWith(prefixesL[i], System.StringComparison.Ordinal))
+                {
+                    mirrored = prefixesR[i] + name.Substring(prefixesL[i].Length);
+                    return true;
+                }
+                if (name.StartsWith(prefixesR[i], System.StringComparison.Ordinal))
+                {
+                    mirrored = prefixesL[i] + name.Substring(prefixesR[i].Length);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryReplaceWordPair(string input, string a, string b, out string replaced)
+        {
+            var indexA = input.IndexOf(a, System.StringComparison.Ordinal);
+            if (indexA >= 0)
+            {
+                replaced = input.Substring(0, indexA) + b + input.Substring(indexA + a.Length);
+                return true;
+            }
+
+            var indexB = input.IndexOf(b, System.StringComparison.Ordinal);
+            if (indexB >= 0)
+            {
+                replaced = input.Substring(0, indexB) + a + input.Substring(indexB + b.Length);
+                return true;
+            }
+
+            replaced = null;
+            return false;
+        }
+
+        internal static float GetAxisByIndex(Vector3 value, int index)
+        {
+            switch (index)
+            {
+                case 0: return value.x;
+                case 1: return value.y;
+                default: return value.z;
+            }
+        }
+
+        internal static void SetAxisByIndex(ref Vector3 value, int index, float component)
+        {
+            switch (index)
+            {
+                case 0:
+                    value.x = component;
+                    break;
+                case 1:
+                    value.y = component;
+                    break;
+                default:
+                    value.z = component;
+                    break;
+            }
         }
     }
 }

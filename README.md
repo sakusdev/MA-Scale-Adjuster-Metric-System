@@ -5,11 +5,14 @@ A Unity Editor extension for editing **Modular Avatar / MA Scale Adjuster** from
 ## Features
 
 - Treats **1 Unity unit as 1 metre** internally, with built-in **Metric (`m`, `cm`, `mm`)** and **Imperial / Yard-Pound (`in`, `ft`, `ft & in`, `yd`)** unit conversion.
-- Measures from the Scale Adjuster bone to a selected direct child.
-- Supports **Full Length** and **Axis Projected** measurement.
+- **Japanese / English UI localization (`Auto`, `Japanese`, `English`)** switcher in the window header.
+- **One-click Add `MA Scale Adjuster`** when selecting an unconfigured bone in the Hierarchy.
+- Measures from the Scale Adjuster bone to a selected direct child (**Full Length** or **Axis Projected**), with **Scene View dimension & target preview gizmos**.
 - Auto-detects the bone's dominant local X / Y / Z axis.
-- Solves the required MA Scale value from a target length in the selected unit.
-- Correctly handles rotated bones and non-uniform parent scale.
+- **Quick step buttons** (`-5 cm`..`+5 cm` or `-1 in`..`+1 in`), **Delta (`+/-`) input**, and **Scale ratio (`%`)** controls.
+- **Left / Right Mirroring**: automatically detects the opposite Humanoid or named (`Left`/`Right`, `.L`/`.R`, `_L`/`_R`) bone and applies the target length to both sides simultaneously (adding `MA Scale Adjuster` to the opposite bone if missing).
+- **Cross-section (thickness) modes**: **Preserve** (primary axis only), **Proportional** (uniform thickness scaling), or **Maintain Volume** ($1/\sqrt{s}$ inverse square root).
+- **Avatar Height Estimation & Solver**: estimates total avatar height and VRChat eye height (`ViewPosition`), and solves the required bone length to reach a desired total height (1:1 or tilt-compensated).
 - Can reposition direct child bones using the same coordinate conversion used by Modular Avatar's Scale Adjuster tool.
 - Can keep Humanoid feet grounded after leg-length edits by vertically compensating the Hips transform.
 - Supports Unity Undo and prefab-instance overrides.

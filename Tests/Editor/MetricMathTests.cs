@@ -171,5 +171,51 @@ namespace SakusDev.MAScaleAdjusterMetricSystem.Tests
             Assert.That(feet, Is.EqualTo(1));
             Assert.That(inches, Is.EqualTo(6.5f).Within(1e-5f));
         }
+
+        [Test]
+        public void BuildTargetScale_RespectsCrossSectionMode()
+        {
+            var oldScale = new Vector3(1f, 2f, 1.5f);
+
+            var preserve = MetricScaleMath.BuildTargetScale(oldScale, 1, 4f, CrossSectionMode.Preserve);
+            Assert.That(preserve.x, Is.EqualTo(1f).Within(1e-6f));
+            Assert.That(preserve.y, Is.EqualTo(4f).Within(1e-6f));
+            Assert.That(preserve.z, Is.EqualTo(1.5f).Within(1e-6f));
+
+            var proportional = MetricScaleMath.BuildTargetScale(oldScale, 1, 4f, CrossSectionMode.Proportional);
+            Assert.That(proportional.x, Is.EqualTo(2f).Within(1e-6f));
+            Assert.That(proportional.y, Is.EqualTo(4f).Within(1e-6f));
+            Assert.That(proportional.z, Is.EqualTo(3f).Within(1e-6f));
+
+            var volume = MetricScaleMath.BuildTargetScale(oldScale, 1, 8f, CrossSectionMode.MaintainVolume);
+            Assert.That(volume.x, Is.EqualTo(0.5f).Within(1e-6f));
+            Assert.That(volume.y, Is.EqualTo(8f).Within(1e-6f));
+            Assert.That(volume.z, Is.EqualTo(0.75f).Within(1e-6f));
+        }
+
+        [Test]
+        public void CalculateBoneLengthForHeightDelta_HandlesTiltAndDirect()
+        {
+            var direct = MetricScaleMath.CalculateBoneLengthForHeightDelta(0.4f, -0.3f, 0.05f, compensateBoneTilt: false);
+            Assert.That(direct, Is.EqualTo(0.45f).Within(1e-6f));
+
+            var tilted = MetricScaleMath.CalculateBoneLengthForHeightDelta(0.4f, -0.2f, 0.05f, compensateBoneTilt: true);
+            Assert.That(tilted, Is.EqualTo(0.5f).Within(1e-6f));
+        }
+
+        [Test]
+        public void TryGetMirroredBoneName_DetectsCommonNamingConventions()
+        {
+            Assert.That(MetricScaleMath.TryGetMirroredBoneName("UpperLeg_Left", out var m1), Is.True);
+            Assert.That(m1, Is.EqualTo("UpperLeg_Right"));
+
+            Assert.That(MetricScaleMath.TryGetMirroredBoneName("Leg.L", out var m2), Is.True);
+            Assert.That(m2, Is.EqualTo("Leg.R"));
+
+            Assert.That(MetricScaleMath.TryGetMirroredBoneName("L_Arm", out var m3), Is.True);
+            Assert.That(m3, Is.EqualTo("R_Arm"));
+
+            Assert.That(MetricScaleMath.TryGetMirroredBoneName("Spine", out _), Is.False);
+        }
     }
 }
